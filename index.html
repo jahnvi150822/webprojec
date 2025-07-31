@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CryptoLock Messenger</title>
+<style>
+  * {
+    margin: 0; padding: 0; box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  }
+  body {
+    background: linear-gradient(to right, #27496d, #5bc0de);
+    color: #fff;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 15px;
+  }
+  .page {
+    width: 100%;
+    max-width: 480px;
+    background: #0a1e3d;
+    padding: 30px 25px;
+    border-radius: 20px;
+    box-shadow: 0 0 20px #5bc0de;
+    text-align: center;
+  }
+  .hidden {
+    display: none;
+  }
+  h1 {
+    margin-bottom: 25px;
+    color: #5bc0de;
+    font-size: 2em;
+  }
+  .box {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+  label {
+    text-align: left;
+    font-weight: 700;
+    font-size: 1em;
+    color: #a3d1ff;
+  }
+  input, textarea, button {
+    padding: 12px 15px;
+    border-radius: 10px;
+    border: none;
+    font-size: 1em;
+    outline: none;
+  }
+  input, textarea {
+    background: #122c57;
+    color: #cce6ff;
+    font-family: monospace;
+    resize: vertical;
+  }
+  textarea {
+    min-height: 80px;
+  }
+  button {
+    background-color: #5bc0de;
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    user-select: none;
+  }
+  button:hover {
+    background-color: #83c8ff;
+  }
+  #key-result {
+    background: #122c57;
+    padding: 15px;
+    border-radius: 10px;
+    font-family: monospace;
+    word-break: break-word;
+    color: #cce6ff;
+    user-select: all;
+  }
+  /* Responsive for small devices */
+  @media (max-width: 400px) {
+    .page {
+      padding: 20px 15px;
+    }
+    h1 {
+      font-size: 1.6em;
+    }
+    input, textarea, button {
+      font-size: 0.9em;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Page 1: Login -->
+<div class="page" id="page-login">
+  <h1>CryptoLock Messenger</h1>
+  <div class="box">
+    <label for="password">Enter Password</label>
+    <input type="password" id="password" placeholder="********" />
+    <button onclick="login()">Login</button>
+  </div>
+</div>
+
+<!-- Page 2: Encrypt/Decrypt -->
+<div class="page hidden" id="page-encrypt">
+  <h1>Encrypt / Decrypt</h1>
+  <div class="box">
+    <label for="message">Enter Message:</label>
+    <textarea id="message" placeholder="Type message here..."></textarea>
+
+    <button onclick="encryptMessage()">Encrypt</button>
+
+    <label for="encrypted">Encrypted Message (Base64):</label>
+    <textarea id="encrypted" readonly></textarea>
+
+    <button onclick="decryptMessage()">Decrypt</button>
+
+    <label for="decrypted">Decrypted Message:</label>
+    <textarea id="decrypted" readonly></textarea>
+
+    <button onclick="goToKeyPage()">Go to AES Key Page</button>
+    <button onclick="goToLogin()">Logout</button>
+  </div>
+</div>
+
+<!-- Page 3: AES Key Generator -->
+<div class="page hidden" id="page-key">
+  <h1>AES Key Generator</h1>
+  <div class="box">
+    <button onclick="generateAESKey()">Generate AES Key</button>
+    <p id="key-result"></p>
+    <button onclick="goToEncryptPage()">Back to Encrypt/Decrypt</button>
+    <button onclick="goToLogin()">Logout</button>
+  </div>
+</div>
+
+<script>
+  const correctPassword = "1234";
+  let cryptoKey = null;
+
+  async function login() {
+    const password = document.getElementById("password").value.trim();
+    if (password === correctPassword) {
+      // Auto generate AES key on login
+      cryptoKey = await window.crypto.subtle.generateKey(
+        { name: "AES-GCM", length: 256 },
+        true,
+        ["encrypt", "decrypt"]
+      );
+      showPage('page-encrypt');
+      clearFields();
+    } else {
+      alert("Incorrect Password!");
+    }
+  }
+
+  function showPage(id) {
+    document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+    document.getElementById(id).classList.remove('hidden');
+  }
+
+  function clearFields() {
+    document.getElementById("password").value = "";
+    document.getElementById("message").value = "";
+    document.getElementById("encrypted").value = "";
+    document.getElementById("decrypted").value = "";
+    document.getElementById("key-result").textContent = "";
+  }
+
+  async function generateAESKey() {
+    cryptoKey = await window.crypto.subtle.generateKey(
+      { name: "AES-GCM", length: 256 },
+      true,
+      ["encrypt", "decrypt"]
+    );
+    const rawKey = await window.crypto.subtle.exportKey("raw", cryptoKey);
+    const b64Key = arrayBufferToBase64(rawKey);
+    document.getElementById("key-result").textContent = b64Key;
+  }
+
+  async function encryptMessage() {
+    if (!cryptoKey) {
+      alert("Please generate AES key first on the AES Key page!");
+      return;
+    }
+    const msg = document.getElementById("message").value.trim();
+    if (!msg) {
+      alert("Enter message to encrypt");
+      return;
+    }
+    const encoder = new TextEncoder();
+    const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit IV
+    const encodedMsg = encoder.encode(msg);
+    try {
+      const encryptedBuffer = await window.crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        cryptoKey,
+        encodedMsg
+      );
+      // Prepend IV for transmission/storage
+      const combined = new Uint8Array(iv.length + encryptedBuffer.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(encryptedBuffer), iv.length);
+      document.getElementById("encrypted").value = arrayBufferToBase64(combined.buffer);
+      document.getElementById("decrypted").value = "";
+    } catch (e) {
+      alert("Encryption failed.");
+      console.error(e);
+    }
+  }
+
+  async function decryptMessage() {
+    if (!cryptoKey) {
+      alert("Please generate AES key first on the AES Key page!");
+      return;
+    }
+    const encryptedB64 = document.getElementById("encrypted").value.trim();
+    if (!encryptedB64) {
+      alert("Enter encrypted message to decrypt");
+      return;
+    }
+    try {
+      const combinedBuffer = base64ToArrayBuffer(encryptedB64);
+      const combined = new Uint8Array(combinedBuffer);
+      const iv = combined.slice(0, 12);
+      const data = combined.slice(12);
+      const decryptedBuffer = await window.crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        cryptoKey,
+        data
+      );
+      const decoder = new TextDecoder();
+      const decryptedMsg = decoder.decode(decryptedBuffer);
+      document.getElementById("decrypted").value = decryptedMsg;
+    } catch (e) {
+      alert("Decryption failed: Invalid key or corrupted data.");
+      console.error(e);
+    }
+  }
+
+  // Helpers to convert ArrayBuffer to base64 and vice versa
+  function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    for (let b of bytes) {
+      binary += String.fromCharCode(b);
+    }
+    return window.btoa(binary);
+  }
+  function base64ToArrayBuffer(base64) {
+    const binary = window.atob(base64);
+    const len = binary.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+
+  function goToKeyPage() {
+    showPage('page-key');
+    clearFields();
+  }
+  function goToEncryptPage() {
+    showPage('page-encrypt');
+    clearFields();
+  }
+  function goToLogin() {
+    cryptoKey = null;
+    clearFields();
+    showPage('page-login');
+  }
+</script>
+
+</body>
+</html>
